@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Données brutes (trop lourdes)
+data/application_train.csv
+data/*.parquet
+
+# MLflow tracking (pas les artefacts du modèle)
+mlflow.db
+mlruns/
+
+# Tests et notebooks
+tests/
+notebooks/
+*.ipynb
+
+# Logs locaux
+logs/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/

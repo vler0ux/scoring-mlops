@@ -1,0 +1,23 @@
+artifact_path: /home/veron/Documents/OpenClassRoom/p6/mlruns/2/models/m-8de0a6141ae54471a85a38c0906a2cbb/artifacts
+flavors:
+  lightgbm:
+    code: null
+    data: model.pkl
+    lgb_version: 4.6.0
+    model_class: lightgbm.sklearn.LGBMClassifier
+    serialization_format: cloudpickle
+    skops_trusted_types: null
+  python_function:
+    data: model.pkl
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.lightgbm
+    python_version: 3.11.14
+mlflow_version: 3.10.0
+model_id: m-8de0a6141ae54471a85a38c0906a2cbb
+model_size_bytes: 367712
+model_uuid: m-8de0a6141ae54471a85a38c0906a2cbb
+prompts: null
+run_id: 17790220fbf64eaa8a4bb3f8b3e1adce
+utc_time_created: '2026-04-04 19:58:01.295145'
