@@ -2,13 +2,16 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import json
-import os
+import tempfile, os
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-# ── Config ──────────────────────────────────────────────────────────────────
+from evidently.report import Report
+from evidently.metric_preset import DataDriftPreset, DataQualityPreset
+
+
 st.set_page_config(
     page_title="Scoring Monitor · Prêt à Dépenser",
     page_icon="📊",
@@ -16,7 +19,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
@@ -115,7 +117,42 @@ COLOR_WARN    = "#e3b341"
 
 SEUIL_DEFAULT = 0.519
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=300)
+def generate_drift_report(log_path: str) -> str | None:
+    try:
+        df_reference = pd.read_parquet("data/app_train_final.parquet", engine="pyarrow")
+        df_prod_raw  = load_logs(log_path)
+        if df_prod_raw.empty:
+            return None
+
+        # Extraire les colonnes input.* et les renommer
+        input_cols = [c for c in df_prod_raw.columns if c.startswith("input.")]
+        df_prod = df_prod_raw[input_cols].rename(
+            columns=lambda c: c.replace("input.", "")
+        )
+
+        # Garder uniquement les features communes
+        feature_cols = [c for c in df_prod.columns if c in df_reference.columns]
+        if not feature_cols:
+            return None
+
+        report = Report(metrics=[DataDriftPreset(), DataQualityPreset()])
+        report.run(
+            reference_data=df_reference[feature_cols].sample(
+                min(5000, len(df_reference)), random_state=42
+            ),
+            current_data=df_prod[feature_cols],
+        )
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
+            tmp = f.name
+        report.save_html(tmp)
+        with open(tmp) as f:
+            html = f.read()
+        os.unlink(tmp)
+        return html
+    except Exception as e:
+        return None
+
 def load_logs(path: str) -> pd.DataFrame:
     records = []
     try:
@@ -460,6 +497,19 @@ for col, (name, (v1, v2)) in zip(drift_cols, metrics.items()):
           <div class="kpi-value" style="font-size:1.2rem;color:#e6edf3">{v2:.3f}</div>
           <div class="kpi-delta" style="color:{color}">{arrow} {abs(pct):.1f}% vs 1ère moitié</div>
         </div>""", unsafe_allow_html=True)
+        
+# ── Evidently Data Drift Report ───────────────────────────────────────────────
+st.markdown('<div class="section-title">Rapport Evidently — Drift vs données d\'entraînement</div>', unsafe_allow_html=True)
+
+if not demo_mode:
+    with st.spinner("Génération du rapport Evidently..."):
+        drift_html = generate_drift_report(log_path)
+    if drift_html:
+        st.components.v1.html(drift_html, height=900, scrolling=True)
+    else:
+        st.warning("Impossible de générer le rapport : vérifiez que data/train.csv et vos logs partagent des colonnes communes.")
+else:
+    st.info("Le rapport Evidently n'est disponible qu'avec de vrais logs (mode démo actif).")
 
 # ── Raw logs table ────────────────────────────────────────────────────────────
 st.markdown("<br>", unsafe_allow_html=True)

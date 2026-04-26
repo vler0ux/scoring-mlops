@@ -53,11 +53,31 @@ scoring-mlops/
 ├── logs/                   # Prédictions loggées en JSONL (généré à l'exécution)
 │
 ├── Dockerfile
+├── dashboard.py
+├── .gitignore
+├── mlflow.db
 ├── .dockerignore
 ├── requirements.txt
 └── README.md
 ```
 
+## Fichiers de données (`data/`)
+
+| Fichier | Taille | Description |
+|---|---|---|
+| `application_train.csv` | 159 Mo | Dataset brut d'entraînement Home Credit (307 511 clients) |
+| `application_test.csv` | 26 Mo | Dataset brut de test Home Credit |
+| `bureau.csv` | 163 Mo | Historique des crédits bureau pour chaque client |
+| `previous_application.csv` | 387 Mo | Historique des demandes de crédit précédentes |
+| `app_train_clean.parquet` | 30 Mo | Dataset nettoyé (248 colonnes) — après suppression des anomalies et encodage |
+| `app_train_final.parquet` | 62 Mo | Dataset final d'entraînement (267 colonnes) — clean + features polynomiales (EXT_SOURCE^2, interactions) |
+| `df_train_enrichi.csv` | 65 Mo | Dataset d'entraînement enrichi (split train) |
+| `df_test_enrichi.csv` | 58 Mo | Dataset de test enrichi (split test) |
+| `HomeCredit_columns_description.csv` | 37 Ko | Description de toutes les variables du dataset Home Credit |
+
+> **Pour le monitoring drift**, le fichier de référence utilisé est `app_train_final.parquet` —
+> il contient les mêmes features que celles vues par le modèle à l'entraînement,
+> incluant les features polynomiales sur `EXT_SOURCE` et `DAYS_BIRTH`.
 ---
 
 ## Lancer l'API
