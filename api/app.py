@@ -1,5 +1,3 @@
-# api/app.py
-
 import gradio as gr
 import os
 from predict import load_model, predict, OPTIMAL_THRESHOLD
@@ -97,9 +95,13 @@ def score_client(
     }
 
     try:
+        import time
+        t0 = time.time()
         result = predict(input_data)
-        print(f"DEBUG → proba brute = {result['score']}, type = {type(result['score'])}")
-        print(f"DEBUG → score={result['score']}, seuil={result['seuil']}, décision={result['decision']}")
+        inference_time_ms = round((time.time() - t0) * 1000, 2)
+        #print(f"DEBUG → proba brute = {result['score']}, type = {type(result['score'])}")
+        #print(f"DEBUG → score={result['score']}, seuil={result['seuil']}, décision={result['decision']}")
+        
         log_prediction(input_data, result)
         gauge = build_gauge_html(result["score"], result["seuil"])
         return gauge, result["score"], result["risque_pct"]
