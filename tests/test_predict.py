@@ -1,5 +1,3 @@
-# tests/test_predict.py
-
 import pytest
 import sys
 import os
@@ -8,7 +6,6 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'api'))
 from predict import load_model, predict, OPTIMAL_THRESHOLD, MODEL
 
-# ── Chargement du modèle une seule fois pour tous les tests ──────────────────
 @pytest.fixture(scope="session", autouse=True)
 def setup_model():
     load_model(os.getenv("MODEL_URI", "./mlflow_model"))

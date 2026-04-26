@@ -31,11 +31,38 @@ def load_model(model_uri: str):
     MODEL = mlflow.lightgbm.load_model(model_uri)  # ← mlflow.lightgbm au lieu de mlflow.pyfunc
     print(f"✅ Modèle chargé : {type(MODEL)}")
 
+def validate_inputs(data: dict) -> None:
+    
+    # Revenu : doit être strictement positif
+    income = data.get("AMT_INCOME_TOTAL")
+    if income is not None and income <= 0:
+        raise ValueError(f"AMT_INCOME_TOTAL doit être > 0, reçu : {income}")
 
+    # Âge : DAYS_BIRTH est négatif dans Home Credit (-6570 = 18 ans)
+    days_birth = data.get("DAYS_BIRTH")
+    if days_birth is not None and days_birth < 6570:
+        raise ValueError(f"DAYS_BIRTH indique un âge < 18 ans : {days_birth}")
+
+    # EXT_SOURCE : doivent être entre 0 et 1
+    for col in ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]:
+        val = data.get(col)
+        if val is not None and not (0.0 <= val <= 1.0):
+            raise ValueError(f"{col} doit être entre 0 et 1, reçu : {val}")
+
+    # Genre : seulement M ou F
+    gender = data.get("CODE_GENDER")
+    if gender is not None and gender not in ("M", "F", 0, 1):
+        raise ValueError(f"CODE_GENDER invalide : {gender}")
+
+    # Mensualité > revenu annuel
+    annuity = data.get("AMT_ANNUITY")
+    if annuity is not None and income is not None and income > 0 and annuity > income:
+        raise ValueError(f"AMT_ANNUITY ({annuity}) > AMT_INCOME_TOTAL ({income})")
+    
 def predict(input_data: dict) -> dict:
     if MODEL is None:
         raise RuntimeError("Modèle non chargé.")
-
+    validate_inputs(input_data) 
     df = pd.DataFrame([input_data])
 
     df['CODE_GENDER_1'] = (df['CODE_GENDER'] == 'M').astype(int)
@@ -53,11 +80,13 @@ def predict(input_data: dict) -> dict:
         if col in df_full.columns:
             df_full[col] = df[col].values[0]
     df = df_full
-
+    df = df.astype(float)
     df = compute_features(df)
 
     # Garder uniquement les colonnes du modèle, dans le bon ordre
     df = df[FEATURE_COLUMNS]
+
+    
 
     # ── Prédiction
     proba_raw = MODEL.predict_proba(df)
