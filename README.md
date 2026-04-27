@@ -100,7 +100,7 @@ python api/app.py
 
 L'interface est accessible sur **http://localhost:7860**
 
-### Option 2 — Via Docker (recommandé)
+### Option 2 — Via Docker 
 
 ```bash
 # 1. Construire l'image
@@ -116,6 +116,20 @@ L'interface est accessible sur **http://localhost:7860**
 
 ```bash
 docker-compose up --build
+```
+
+### 4. Avec persistance des logs (optionnel)
+
+```bash
+docker run -p 7860:7860 -v $(pwd)/logs:/app/logs scoring-api
+```
+
+dictions seront sauvegardées dans `logs/predictions.jsonl` sur votre machine.
+
+### 5. Vérifier que le conteneur tourne
+
+```bash
+docker ps
 ```
 
 ---
@@ -144,6 +158,23 @@ L'interface Gradio demande les informations suivantes pour un client :
 
 ---
 
+# 2. Créer l'environnement virtuel et installer les dépendances
+python -m venv venv
+source venv/bin/activate       # Windows : venv\Scripts\activate
+pip install -r requirements.txt
+
+---
+
+# 3. Définir le chemin du modèle
+export MODEL_URI=./mlflow_model  # Windows : set MODEL_URI=./mlflow_model
+
+---
+
+# 4. Lancer l'API
+python api/app.py
+
+---
+
 ## Pipeline de données
 
 Si tu disposes de nouvelles données brutes, le script `prepare_data.py` reproduit
@@ -164,7 +195,17 @@ Le fichier de sortie est utilisé comme **référence de drift** par Evidently A
 ### Lancer le dashboard Streamlit
 
 ```bash
-streamlit run monitoring/dashboard.py
+# 1. Installer les dépendances (si pas déjà fait)
+pip install -r requirements.txt
+
+# 2. Lancer le dashboard
+streamlit run dashboard.py
+```
+
+Le dashboard est accessible sur **http://localhost:8501**
+
+> **Note** : le dashboard nécessite que des logs existent dans `logs/predictions.jsonl`.
+> Lancez d'abord l'API et effectuez quelques prédictions pour générer des données.
 ```
 
 Le dashboard affiche :
@@ -220,6 +261,19 @@ push sur `main` et exécute dans l'ordre :
 |---|---|---|
 | `MODEL_URI` | `./mlflow_model` | Chemin vers les artefacts MLflow |
 | `LOG_FILE` | `./logs/predictions.jsonl` | Fichier de log des prédictions |
+
+
+Si le modèle n'est pas trouvé au chemin par défaut (`./mlflow_model`),
+vous pouvez spécifier son emplacement via la variable `MODEL_URI` :
+
+```bash
+# Exemple avec un chemin personnalisé
+MODEL_URI=./mlflow_model python api/app.py
+
+# Ou en exportant la variable
+export MODEL_URI=./mlflow_model
+python api/app.py
+```
 
 ---
 
