@@ -1,14 +1,14 @@
 # Scoring Crédit — Prêt à Dépenser
 ## Projet MLOps P8 — Mise en production du modèle de scoring
 
-> le déploiement et le suivi en production d'un modèle de scoring.
+> Déploiement et suivi en production d'un modèle de scoring de risque de crédit.
 
 ---
 
 ## Présentation
 
-Ce projet met en production un modèle de scoring de risque de crédit basé sur le dataset **Home Credit Default Risk**.  
-Il expose le modèle via une **API Gradio**, conteneurisée avec **Docker**, avec un pipeline **CI/CD GitHub Actions** et un **dashboard de monitoring** des données de production.
+Ce projet met en production un modèle de scoring basé sur le dataset **Home Credit Default Risk**.
+Il expose le modèle via une **API Gradio**, conteneurisée avec **Docker**, avec un pipeline **CI/CD GitHub Actions** et un **dashboard de monitoring** Streamlit + Evidently AI.
 
 - **Modèle** : LightGBM 4.6.0, entraîné et versionné dans MLflow (P6)
 - **Seuil métier** : 0.519 (optimisé pour minimiser le coût métier — FN coûte 10× FP)
@@ -20,135 +20,89 @@ Il expose le modèle via une **API Gradio**, conteneurisée avec **Docker**, ave
 
 ```
 scoring-mlops/
-│
 ├── api/
 │   ├── app.py              # Interface Gradio + chargement modèle
 │   ├── predict.py          # Logique d'inférence + seuil métier
 │   └── logger.py           # Logging JSON des prédictions
-│
 ├── tests/
 │   ├── test_api.py         # Tests unitaires de l'API
 │   └── test_predict.py     # Tests du pipeline d'inférence
-│
 ├── monitoring/
-│   ├── dashboard.py        # Dashboard Streamlit (scores, latence)
-│   └── drift_analysis.py   # Détection de drift avec Evidently AI
-│
+│   └── drift_analysis.py   # Détection de drift standalone avec Evidently AI
 ├── scripts/
 │   └── prepare_data.py     # Pipeline de nettoyage + feature engineering
-│
 ├── data/
-│   └── reference_data.csv  # Échantillon de référence pour le drift
-│
+│   └── app_train_final.parquet  # Référence de drift (features d'entraînement)
 ├── mlflow_model/           # Artefacts du modèle champion (depuis P6)
 │   ├── MLmodel
 │   ├── model.pkl
 │   ├── requirements.txt
 │   └── conda.yaml
-│
 ├── .github/
 │   └── workflows/
 │       └── ci_cd.yml       # Pipeline GitHub Actions
-│
 ├── logs/                   # Prédictions loggées en JSONL (généré à l'exécution)
-│
+├── dashboard.py            # Dashboard Streamlit de monitoring
 ├── Dockerfile
-├── dashboard.py
-├── .gitignore
-├── mlflow.db
-├── .dockerignore
 ├── requirements.txt
 └── README.md
 ```
 
-## Fichiers de données (`data/`)
-
-| Fichier | Taille | Description |
-|---|---|---|
-| `application_train.csv` | 159 Mo | Dataset brut d'entraînement Home Credit (307 511 clients) |
-| `application_test.csv` | 26 Mo | Dataset brut de test Home Credit |
-| `bureau.csv` | 163 Mo | Historique des crédits bureau pour chaque client |
-| `previous_application.csv` | 387 Mo | Historique des demandes de crédit précédentes |
-| `app_train_clean.parquet` | 30 Mo | Dataset nettoyé (248 colonnes) — après suppression des anomalies et encodage |
-| `app_train_final.parquet` | 62 Mo | Dataset final d'entraînement (267 colonnes) — clean + features polynomiales (EXT_SOURCE^2, interactions) |
-| `df_train_enrichi.csv` | 65 Mo | Dataset d'entraînement enrichi (split train) |
-| `df_test_enrichi.csv` | 58 Mo | Dataset de test enrichi (split test) |
-| `HomeCredit_columns_description.csv` | 37 Ko | Description de toutes les variables du dataset Home Credit |
-
-> **Pour le monitoring drift**, le fichier de référence utilisé est `app_train_final.parquet` —
-> il contient les mêmes features que celles vues par le modèle à l'entraînement,
-> incluant les features polynomiales sur `EXT_SOURCE` et `DAYS_BIRTH`.
 ---
 
-## Lancer l'API
-
-### Option 1 — En local (sans Docker)
+## Installation
 
 ```bash
-# 1. Cloner le repo
 git clone https://github.com/vler0ux/scoring-mlops.git
 cd scoring-mlops
-
-# 2. Créer l'environnement et installer les dépendances
 python -m venv venv
-source venv/bin/activate       # Windows : venv\Scripts\activate
+source venv/bin/activate    # Windows : venv\Scripts\activate
 pip install -r requirements.txt
+```
 
-# 3. Lancer l'API
+---
+
+## 1. Lancer l'API Gradio
+
+L'API expose une interface Gradio pour scorer un client et loggue chaque prédiction dans `logs/predictions.jsonl`.
+
+### En local
+
+```bash
+source venv/bin/activate
 python api/app.py
 ```
 
-L'interface est accessible sur **http://localhost:7860**
+Interface accessible sur **http://localhost:7860**
 
-### Option 2 — Via Docker 
+### Via Docker
 
 ```bash
-# 1. Construire l'image
+# Construire l'image
 docker build -t scoring-api .
 
-# 2. Lancer le conteneur
+# Lancer (sans persistance des logs)
 docker run -p 7860:7860 scoring-api
-```
 
-L'interface est accessible sur **http://localhost:7860**
-
-### Option 3 — Docker Compose
-
-```bash
-docker-compose up --build
-```
-
-### 4. Avec persistance des logs (optionnel)
-
-```bash
+# Lancer avec persistance des logs sur la machine hôte
 docker run -p 7860:7860 -v $(pwd)/logs:/app/logs scoring-api
 ```
 
-dictions seront sauvegardées dans `logs/predictions.jsonl` sur votre machine.
+Interface accessible sur **http://localhost:7860**
 
-### 5. Vérifier que le conteneur tourne
-
-```bash
-docker ps
-```
-
----
-
-## Utilisation de l'API
-
-L'interface Gradio demande les informations suivantes pour un client :
+### Champs du formulaire
 
 | Champ | Description | Exemple |
 |---|---|---|
-| `SK_ID_CURR` | Identifiant client | 100001 |
-| `AMT_INCOME_TOTAL` | Revenu annuel (€) | 135000 |
-| `AMT_CREDIT` | Montant du crédit (€) | 568800 |
-| `AMT_ANNUITY` | Mensualité (€) | 20250 |
-| `DAYS_BIRTH` | Âge en jours (négatif) | -12000 |
-| `DAYS_EMPLOYED` | Ancienneté emploi en jours | -3000 |
-| `EXT_SOURCE_1/2/3` | Scores externes de crédit | 0.5 / 0.6 / 0.7 |
-| `CODE_GENDER` | Genre | M / F |
-| `NAME_EDUCATION_TYPE` | Niveau d'éducation | Higher education |
+| Revenu annuel (€) | `AMT_INCOME_TOTAL` | 135 000 |
+| Montant du crédit (€) | `AMT_CREDIT` | 200 000 |
+| Mensualité (€) | `AMT_ANNUITY` | 8 000 |
+| Âge (années) | converti en `DAYS_BIRTH` | 35 |
+| Ancienneté emploi (années) | converti en `DAYS_EMPLOYED` | 8 |
+| Sans emploi / Retraité | force `DAYS_EMPLOYED = 365243` | case à cocher |
+| EXT_SOURCE_1/2/3 | Scores externes de crédit (0–1) | 0.5 / 0.6 / 0.7 |
+| Genre | `CODE_GENDER` | M / F |
+| Niveau d'éducation | `NAME_EDUCATION_TYPE` | Higher education |
 
 **Résultat retourné :**
 - **Décision** : ✅ Accordé / ❌ Refusé
@@ -158,74 +112,67 @@ L'interface Gradio demande les informations suivantes pour un client :
 
 ---
 
-# 2. Créer l'environnement virtuel et installer les dépendances
-python -m venv venv
-source venv/bin/activate       # Windows : venv\Scripts\activate
-pip install -r requirements.txt
+## 2. Logs des prédictions (JSONL)
 
----
+Chaque prédiction est enregistrée dans `logs/predictions.jsonl`, une ligne par requête :
 
-# 3. Définir le chemin du modèle
-export MODEL_URI=./mlflow_model  # Windows : set MODEL_URI=./mlflow_model
-
----
-
-# 4. Lancer l'API
-python api/app.py
-
----
-
-## Pipeline de données
-
-Si tu disposes de nouvelles données brutes, le script `prepare_data.py` reproduit
-l'intégralité du pipeline de nettoyage et de feature engineering du projet P6 :
-
-```bash
-python scripts/prepare_data.py \
-  --input  data/application_train.csv \
-  --output data/reference_data.csv
+```json
+{
+  "timestamp": "2025-01-15T14:32:01.123456+00:00",
+  "input": {
+    "AMT_INCOME_TOTAL": 135000.0,
+    "AMT_CREDIT": 200000.0,
+    "AMT_ANNUITY": 8000.0,
+    "DAYS_BIRTH": 12783.0,
+    "DAYS_EMPLOYED": 2922.0,
+    "EXT_SOURCE_1": 0.5,
+    "EXT_SOURCE_2": 0.6,
+    "EXT_SOURCE_3": 0.7,
+    "CODE_GENDER": "M",
+    "NAME_EDUCATION_TYPE": "Higher education"
+  },
+  "score": 0.312,
+  "decision": "✅ Crédit ACCORDÉ",
+  "seuil": 0.519,
+  "inference_time_ms": 42.7
+}
 ```
 
-Le fichier de sortie est utilisé comme **référence de drift** par Evidently AI.
+Ce fichier est la source de données du dashboard de monitoring.
 
 ---
 
-## Monitoring
+## 3. Dashboard Streamlit + Evidently
 
-### Lancer le dashboard Streamlit
+Le dashboard lit `logs/predictions.jsonl` et affiche :
+- Distribution des scores et évolution temporelle
+- Latence de l'API (moyenne, p95, alerte configurable)
+- Taux de décisions accordées / refusées
+- Indicateur de dérive temporelle (1ère vs 2ème moitié des requêtes)
+- Rapport Evidently AI complet (drift vs données d'entraînement)
+
+> **Prérequis** : avoir lancé l'API et effectué au moins quelques prédictions pour que `logs/predictions.jsonl` existe. En l'absence de logs, le dashboard s'affiche en **mode démo** avec des données synthétiques.
 
 ```bash
-# 1. Installer les dépendances (si pas déjà fait)
-pip install -r requirements.txt
-
-# 2. Lancer le dashboard
+source venv/bin/activate
 streamlit run dashboard.py
 ```
 
-Le dashboard est accessible sur **http://localhost:8501**
+Dashboard accessible sur **http://localhost:8501**
 
-> **Note** : le dashboard nécessite que des logs existent dans `logs/predictions.jsonl`.
-> Lancez d'abord l'API et effectuez quelques prédictions pour générer des données.
-```
+### Analyse de drift standalone
 
-Le dashboard affiche :
-- Distribution des scores prédits en production
-- Évolution de la latence de l'API
-- Alertes de data drift (features vs référence d'entraînement)
-- Taux de décisions accordées / refusées
-
-### Analyse de drift
+Pour générer un rapport Evidently sans lancer le dashboard :
 
 ```bash
 python monitoring/drift_analysis.py
 ```
 
-Compare les données de production (`logs/predictions.jsonl`) avec la référence
-(`data/reference_data.csv`) en utilisant **Evidently AI**.
+Compare `logs/predictions.jsonl` avec `data/app_train_final.parquet` (référence d'entraînement).
 
 ---
 
-## Tests
+## 4. Tests
 
 ```bash
 # Lancer tous les tests
@@ -239,19 +186,20 @@ Les tests couvrent :
 - Prédiction avec des données valides
 - Gestion des valeurs manquantes
 - Rejet des types incorrects
-- Rejet des valeurs hors plage (âge négatif, revenu nul...)
+- Rejet des valeurs hors plage
 - Temps de réponse de l'API
 
 ---
 
-## CI/CD
+## 5. CI/CD
 
-Le pipeline GitHub Actions (`.github/workflows/ci_cd.yml`) se déclenche à chaque
-push sur `main` et exécute dans l'ordre :
+Le pipeline GitHub Actions (`.github/workflows/ci_cd.yml`) se déclenche à chaque push sur `main` :
 
-1. **Tests** — `pytest` sur l'ensemble des tests unitaires
-2. **Build** — construction de l'image Docker si les tests passent
-3. **Déploiement** — push de l'image vers Hugging Face Spaces
+1. **test** — `pytest` sur l'ensemble des tests unitaires
+2. **build** — construction et validation de l'image Docker
+3. **deploy** — push du code vers Hugging Face Spaces (déclenche le build Docker côté HF)
+
+**Secret requis** : `HF_TOKEN` (token Hugging Face avec droits write) à configurer dans GitHub → Settings → Secrets → Actions.
 
 ---
 
@@ -262,34 +210,33 @@ push sur `main` et exécute dans l'ordre :
 | `MODEL_URI` | `./mlflow_model` | Chemin vers les artefacts MLflow |
 | `LOG_FILE` | `./logs/predictions.jsonl` | Fichier de log des prédictions |
 
+```bash
+MODEL_URI=./mlflow_model LOG_FILE=./logs/predictions.jsonl python api/app.py
+```
 
-Si le modèle n'est pas trouvé au chemin par défaut (`./mlflow_model`),
-vous pouvez spécifier son emplacement via la variable `MODEL_URI` :
+---
+
+## Pipeline de données
+
+Pour régénérer le fichier de référence de drift à partir de nouvelles données brutes :
 
 ```bash
-# Exemple avec un chemin personnalisé
-MODEL_URI=./mlflow_model python api/app.py
-
-# Ou en exportant la variable
-export MODEL_URI=./mlflow_model
-python api/app.py
+python scripts/prepare_data.py \
+  --input  data/application_train.csv \
+  --output data/app_train_final.parquet
 ```
 
 ---
 
 ## Projet source (P6)
 
-Le modèle utilisé dans ce projet a été développé, entraîné et versionné dans le
-projet P6 (MLflow) disponible ici :  
-🔗 **[lien vers ton repo P6]**
-
 - Dataset : [Home Credit Default Risk](https://www.kaggle.com/c/home-credit-default-risk)
 - Modèle champion : LightGBM v4.6.0, AUC validation = **0.767**
 - Alias MLflow : `champion` (version 14)
+- Repo P6 : **[lien vers ton repo P6]**
 
 ---
 
 ## Auteur
 
-**Véronique LEROUX** — Projet MLOps P8 — OpenClassrooms  
-Formation Data Scientist
+**Véronique LEROUX** — Projet MLOps P8 — OpenClassrooms — Formation Data Scientist

@@ -64,9 +64,9 @@ def score_client(
     amt_income_total,
     amt_credit,
     amt_annuity,
-    age_ans,           # ← en années maintenant
-    anciennete_ans,    # ← en années maintenant
-    sans_emploi,       # ← checkbox "Sans emploi / Retraité"
+    age_ans,           
+    anciennete_ans,   
+    sans_emploi,       
     ext_source_1,
     ext_source_2,
     ext_source_3,
@@ -102,7 +102,7 @@ def score_client(
         #print(f"DEBUG → proba brute = {result['score']}, type = {type(result['score'])}")
         #print(f"DEBUG → score={result['score']}, seuil={result['seuil']}, décision={result['decision']}")
         
-        log_prediction(input_data, result)
+        log_prediction(input_data, result, inference_time_ms)
         gauge = build_gauge_html(result["score"], result["seuil"])
         return gauge, result["score"], result["risque_pct"]
 
